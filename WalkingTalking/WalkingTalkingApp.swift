@@ -12,7 +12,9 @@ import SwiftData
 struct WalkingTalkingApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            Lesson.self,
+            Sentence.self,
+            LessonProgress.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 

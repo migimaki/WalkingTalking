@@ -10,52 +10,126 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @Query(sort: \Lesson.createdDate, order: .reverse) private var lessons: [Lesson]
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
-                }
-                .onDelete(perform: deleteItems)
+        NavigationStack {
+            if lessons.isEmpty {
+                emptyStateView
+            } else {
+                lessonListView
             }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
-            }
-        } detail: {
-            Text("Select an item")
+        }
+        .onAppear {
+            loadSampleDataIfNeeded()
         }
     }
 
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
+    private var lessonListView: some View {
+        List {
+            ForEach(lessons) { lesson in
+                NavigationLink {
+                    PlayerView(lesson: lesson)
+                } label: {
+                    LessonRowView(lesson: lesson)
+                }
+            }
+            .onDelete(perform: deleteLessons)
+        }
+        .navigationTitle("Lessons")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                EditButton()
+            }
         }
     }
 
-    private func deleteItems(offsets: IndexSet) {
+    private var emptyStateView: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "book.fill")
+                .font(.system(size: 60))
+                .foregroundColor(.gray)
+
+            Text("No Lessons Yet")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            Text("Sample lesson will be loaded automatically")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+        }
+        .navigationTitle("Lessons")
+    }
+
+    private func loadSampleDataIfNeeded() {
+        if lessons.isEmpty {
+            LessonDataService.initializeSampleData(context: modelContext)
+        }
+    }
+
+    private func deleteLessons(offsets: IndexSet) {
         withAnimation {
             for index in offsets {
-                modelContext.delete(items[index])
+                modelContext.delete(lessons[index])
             }
         }
     }
 }
 
+struct LessonRowView: View {
+    let lesson: Lesson
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(lesson.title)
+                .font(.headline)
+
+            if !lesson.lessonDescription.isEmpty {
+                Text(lesson.lessonDescription)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+            }
+
+            HStack {
+                Label("\(lesson.totalSentences) sentences", systemImage: "text.alignleft")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                if let progress = lesson.progress, progress.currentSentenceIndex > 0 {
+                    Spacer()
+                    Text("Progress: \(progress.currentSentenceIndex)/\(lesson.totalSentences)")
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
 #Preview {
-    ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try! ModelContainer(for: Lesson.self, configurations: config)
+
+    // Create sample lesson
+    let lesson = Lesson(
+        title: "6 Minute English",
+        description: "AI and Art - Today, we're diving into a fascinating question"
+    )
+
+    for i in 0..<12 {
+        let sentence = Sentence(
+            text: "Sample sentence \(i + 1)",
+            order: i
+        )
+        lesson.sentences.append(sentence)
+    }
+
+    container.mainContext.insert(lesson)
+
+    return ContentView()
+        .modelContainer(container)
 }

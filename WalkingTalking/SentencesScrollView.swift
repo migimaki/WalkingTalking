@@ -1,0 +1,113 @@
+//
+//  SentencesScrollView.swift
+//  WalkingTalking
+//
+//  Created by KEISUKE YANAGISAWA on 2025/10/30.
+//
+
+import SwiftUI
+
+struct SentencesScrollView: View {
+    let sentences: [Sentence]
+    let currentIndex: Int
+    let isPlaying: Bool
+    let recognizedTextBySentence: [Int: String]
+    let currentRecognizedText: String
+
+    @Namespace private var sentenceNamespace
+
+    var body: some View {
+        GeometryReader { geometry in
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        // Top padding to allow centering of first items
+                        Spacer()
+                            .frame(height: geometry.size.height * 0.4)
+
+                        ForEach(Array(sentences.enumerated()), id: \.element.id) { index, sentence in
+                            VStack(alignment: .leading, spacing: 8) {
+                                // Original sentence text
+                                Text(sentence.text)
+                                    .font(.body)
+                                    .foregroundColor(textColor(for: index))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .id(index)
+
+                                // Recognized text with color-coded comparison (if available)
+                                if let recognizedText = getRecognizedText(for: index), !recognizedText.isEmpty {
+                                    RecognizedTextView(
+                                        originalText: sentence.text,
+                                        recognizedText: recognizedText
+                                    )
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                        }
+
+                        // Bottom padding to allow centering of last items
+                        Spacer()
+                            .frame(height: geometry.size.height * 0.4)
+                    }
+                    .padding(.vertical, 16)
+                }
+                .scrollIndicators(.visible)
+                .onChange(of: currentIndex) { oldValue, newValue in
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        proxy.scrollTo(newValue, anchor: .center)
+                    }
+                }
+                .onAppear {
+                    // Scroll to current sentence on appear
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        proxy.scrollTo(currentIndex, anchor: .center)
+                    }
+                }
+            }
+        }
+    }
+
+    private func textColor(for index: Int) -> Color {
+        if index == currentIndex {
+            return .blue
+        } else if index < currentIndex {
+            return .secondary
+        } else {
+            return .primary
+        }
+    }
+
+    private func getRecognizedText(for index: Int) -> String? {
+        // If this is the current sentence, show live recognized text
+        if index == currentIndex && !currentRecognizedText.isEmpty {
+            return currentRecognizedText
+        }
+        // Otherwise show saved recognized text
+        return recognizedTextBySentence[index]
+    }
+}
+
+#Preview {
+    let sentences = [
+        Sentence(text: "Today, we're diving into a fascinating question: Can AI really create art?", order: 0),
+        Sentence(text: "Yeah, that's a big one.", order: 1),
+        Sentence(text: "Over the past few years, we've seen AI models like DALL-E, Midjourney, and Runway generating paintings, videos, even whole music albums.", order: 2),
+        Sentence(text: "Some of these pieces have sold for thousands of dollars.", order: 3),
+        Sentence(text: "But here's what's interesting: most AI art isn't created by AI alone.", order: 4),
+    ]
+
+    let recognizedTexts: [Int: String] = [
+        0: "Today we're diving into a fascinating question can AI really create art",
+        1: "Yeah that's a big one"
+    ]
+
+    return VStack {
+        SentencesScrollView(
+            sentences: sentences,
+            currentIndex: 2,
+            isPlaying: true,
+            recognizedTextBySentence: recognizedTexts,
+            currentRecognizedText: "Over the past few years we've seen AI models..."
+        )
+    }
+}
