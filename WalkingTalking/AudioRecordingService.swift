@@ -60,11 +60,16 @@ class AudioRecordingService {
         }
 
         // Install tap on input node to receive audio buffers
+        var bufferCount = 0
         inputNode.installTap(
             onBus: 0,
             bufferSize: AudioConstants.audioBufferSize,
             format: format
         ) { [weak self] buffer, time in
+            bufferCount += 1
+            if bufferCount % 100 == 0 {
+                print("[AudioRecordingService] Received \(bufferCount) audio buffers")
+            }
             self?.delegate?.didReceiveAudioBuffer(buffer, time: time)
         }
 
@@ -88,6 +93,20 @@ class AudioRecordingService {
         audioEngine.stop()
 
         isRecording = false
+    }
+
+    func ensureEngineRunning() {
+        // Check if engine is running, restart if needed (for background transitions)
+        if isRecording && !audioEngine.isRunning {
+            print("[AudioRecordingService] Audio engine stopped unexpectedly, restarting...")
+            do {
+                try audioEngine.start()
+                print("[AudioRecordingService] Audio engine restarted successfully")
+            } catch {
+                print("[AudioRecordingService] Failed to restart audio engine: \(error)")
+                delegate?.recordingDidFail(error: error)
+            }
+        }
     }
 
     func cleanup() {

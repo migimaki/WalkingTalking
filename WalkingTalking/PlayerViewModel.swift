@@ -151,6 +151,20 @@ class PlayerViewModel {
         recognizedTextBySentence.removeAll()
     }
 
+    func handleBackground() {
+        // App went to background - ensure audio session and recording stays active
+        print("[PlayerViewModel] Handling background transition, isRecording: \(isRecording), isPlaying: \(isPlaying)")
+
+        // Don't reconfigure anything - just let background audio mode handle it
+        // The audio session is already configured for playAndRecord with background support
+        print("[PlayerViewModel] Audio session already configured for background, no action needed")
+    }
+
+    func handleForeground() {
+        // App returned to foreground
+        print("[PlayerViewModel] Handling foreground transition, isRecording: \(isRecording), isPlaying: \(isPlaying)")
+    }
+
     private func requestMicrophonePermission() {
         recordingService.requestMicrophonePermission { [weak self] granted in
             self?.hasMicrophonePermission = granted
@@ -455,8 +469,12 @@ extension PlayerViewModel: AudioSessionManagerDelegate {
     }
 
     func audioRouteChanged() {
-        // Audio route changed (e.g., Bluetooth headphones connected)
-        // For now, just log the change - the audio engine will adapt automatically
-        print("Audio route changed to: \(audioSessionManager.getCurrentOutputDevice())")
+        // Audio route changed (e.g., Bluetooth headphones connected, or background transition)
+        print("[PlayerViewModel] Audio route changed to: \(audioSessionManager.getCurrentOutputDevice()), isRecording: \(isRecording), isPlaying: \(isPlaying)")
+
+        // For background transitions, just log the change
+        // Don't restart anything - let iOS handle the route change naturally
+        // The background audio mode and audio session category should keep everything running
+        print("[PlayerViewModel] Route change detected, audio should continue automatically")
     }
 }

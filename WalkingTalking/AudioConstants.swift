@@ -24,6 +24,9 @@ enum AudioConstants {
     // Audio Session
     static let audioSessionCategory: AVAudioSession.Category = .playAndRecord
     static let audioSessionMode: AVAudioSession.Mode = .voiceChat
+    // .allowBluetooth: enables Bluetooth headsets
+    // .defaultToSpeaker: use speaker for playback (not needed for headphones)
+    // Keep it simple - just allowBluetooth for background recording to work
     static let audioSessionOptions: AVAudioSession.CategoryOptions = [.allowBluetooth]
 
     // UI

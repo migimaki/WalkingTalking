@@ -99,6 +99,21 @@ extension AudioPlayerService: AVAudioPlayerDelegate {
         print("❌ Audio decode error: \(error.localizedDescription)")
         delegate?.audioDidFail(error: error)
     }
+
+    func audioPlayerBeginInterruption(_ player: AVAudioPlayer) {
+        print("[AudioPlayerService] ⚠️ Audio playback interrupted (begin)")
+        isPlaying = false
+    }
+
+    func audioPlayerEndInterruption(_ player: AVAudioPlayer, withOptions flags: Int) {
+        print("[AudioPlayerService] 🔄 Audio interruption ended, flags: \(flags)")
+        // Flags: 1 = should resume
+        if flags == 1 {
+            print("[AudioPlayerService] Resuming playback after interruption")
+            player.play()
+            isPlaying = true
+        }
+    }
 }
 
 // MARK: - Errors

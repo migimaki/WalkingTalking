@@ -11,6 +11,7 @@ import SwiftData
 struct PlayerView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var viewModel: PlayerViewModel
     @State private var showDebugMenu = false
@@ -97,6 +98,20 @@ struct PlayerView: View {
         }
         .onDisappear {
             viewModel.cleanup()
+        }
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            switch newPhase {
+            case .background:
+                print("[PlayerView] App entered background - ensuring recording continues")
+                viewModel.handleBackground()
+            case .inactive:
+                print("[PlayerView] App became inactive")
+            case .active:
+                print("[PlayerView] App became active - resuming foreground")
+                viewModel.handleForeground()
+            @unknown default:
+                break
+            }
         }
         .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
             Button("OK") {

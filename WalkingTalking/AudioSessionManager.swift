@@ -123,17 +123,46 @@ class AudioSessionManager {
             return
         }
 
+        print("[AudioSessionManager] Route change reason: \(reason.rawValue)")
+
         switch reason {
         case .oldDeviceUnavailable:
             // Headphones were unplugged, pause playback
+            print("[AudioSessionManager] Old device unavailable - pausing")
             delegate?.audioSessionInterrupted()
 
-        case .newDeviceAvailable, .categoryChange:
-            // New audio device connected (e.g., Bluetooth) or category changed
-            // Notify delegate to reset audio engine for new format
+        case .newDeviceAvailable:
+            // New audio device connected
+            print("[AudioSessionManager] New device available - notifying delegate")
+            delegate?.audioRouteChanged()
+
+        case .categoryChange:
+            // Audio category changed
+            print("[AudioSessionManager] Category changed - notifying delegate")
+            delegate?.audioRouteChanged()
+
+        case .override:
+            // System override (e.g., route to speaker)
+            print("[AudioSessionManager] Route override - notifying delegate")
+            delegate?.audioRouteChanged()
+
+        case .wakeFromSleep:
+            // Device woke from sleep
+            print("[AudioSessionManager] Wake from sleep - notifying delegate")
+            delegate?.audioRouteChanged()
+
+        case .noSuitableRouteForCategory:
+            // No suitable route for category
+            print("[AudioSessionManager] No suitable route - interrupting")
+            delegate?.audioSessionInterrupted()
+
+        case .routeConfigurationChange:
+            // Route configuration changed (common during background transitions)
+            print("[AudioSessionManager] Route configuration changed - notifying delegate")
             delegate?.audioRouteChanged()
 
         default:
+            print("[AudioSessionManager] Unhandled route change reason: \(reason.rawValue)")
             break
         }
     }
