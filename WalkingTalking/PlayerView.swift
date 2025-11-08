@@ -13,6 +13,7 @@ struct PlayerView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var viewModel: PlayerViewModel
+    @State private var showDebugMenu = false
 
     init(lesson: Lesson) {
         _viewModel = State(initialValue: PlayerViewModel(lesson: lesson))
@@ -50,30 +51,40 @@ struct PlayerView: View {
                 Spacer()
             }
 
-            // Voice activity indicator
-            if viewModel.isRecording {
-                VoiceActivityIndicator(isActive: viewModel.isVoiceActive)
-                    .transition(.scale.combined(with: .opacity))
-                    .padding(.vertical, 8)
-            }
-
             // Bottom controls area
-            VStack(spacing: 12) {
-                // Player controls
-                PlayerControlsView(
-                    isPlaying: viewModel.isPlaying,
-                    canGoBack: viewModel.canGoToPrevious,
-                    canGoForward: viewModel.canGoToNext,
-                    onPlayPause: { viewModel.togglePlayPause() },
-                    onRewind: { viewModel.goToPreviousSentence() },
-                    onForward: { viewModel.goToNextSentence() }
-                )
+            VStack(spacing: 0) {
+                // Discrete border
+                Divider()
+                    .background(Color.gray.opacity(0.3))
+
+                VStack(spacing: 12) {
+                    // Player controls
+                    PlayerControlsView(
+                        isPlaying: viewModel.isPlaying,
+                        canGoBack: viewModel.canGoToPrevious,
+                        canGoForward: viewModel.canGoToNext,
+                        onPlayPause: { viewModel.togglePlayPause() },
+                        onRewind: { viewModel.goToPreviousSentence() },
+                        onForward: { viewModel.goToNextSentence() }
+                    )
+                }
+                .padding(.vertical, 12)
             }
-            .padding(.vertical, 12)
-            .background(Color(.systemGroupedBackground))
         }
         .navigationTitle(viewModel.lesson.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    showDebugMenu = true
+                } label: {
+                    Image(systemName: "info.circle")
+                }
+            }
+        }
+        .sheet(isPresented: $showDebugMenu) {
+            AudioDeviceDebugView(viewModel: viewModel)
+        }
         .onAppear {
             viewModel.setup()
         }
@@ -87,6 +98,81 @@ struct PlayerView: View {
         } message: {
             if let errorMessage = viewModel.errorMessage {
                 Text(errorMessage)
+            }
+        }
+    }
+}
+
+// MARK: - Audio Device Debug View
+
+struct AudioDeviceDebugView: View {
+    @Environment(\.dismiss) private var dismiss
+    let viewModel: PlayerViewModel
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Current Audio Devices") {
+                    LabeledContent("Speaker/Output") {
+                        Text(viewModel.currentOutputDevice)
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundColor(.primary)
+                    }
+
+                    LabeledContent("Microphone/Input") {
+                        Text(viewModel.currentInputDevice)
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundColor(.primary)
+                    }
+                }
+
+                Section("Available Input Devices") {
+                    if viewModel.availableInputDevices.isEmpty {
+                        Text("No input devices found")
+                            .foregroundColor(.secondary)
+                    } else {
+                        ForEach(viewModel.availableInputDevices, id: \.self) { device in
+                            HStack {
+                                Text(device)
+                                    .font(.system(.body, design: .monospaced))
+                                Spacer()
+                                if device == viewModel.currentInputDevice {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Section("Debug Info") {
+                    LabeledContent("Mic Permission") {
+                        Text(viewModel.hasMicrophonePermission ? "✓ Granted" : "✗ Denied")
+                            .foregroundColor(viewModel.hasMicrophonePermission ? .green : .red)
+                    }
+
+                    LabeledContent("Speech Recognition") {
+                        Text(viewModel.hasSpeechRecognitionPermission ? "✓ Granted" : "✗ Denied")
+                            .foregroundColor(viewModel.hasSpeechRecognitionPermission ? .green : .red)
+                    }
+
+                    LabeledContent("Recording Status") {
+                        Text(viewModel.isRecording ? "🔴 Recording" : "⚫️ Not Recording")
+                    }
+
+                    LabeledContent("Playback Status") {
+                        Text(viewModel.isPlaying ? "▶️ Playing" : "⏸️ Paused")
+                    }
+                }
+            }
+            .navigationTitle("Audio Device Debug")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
             }
         }
     }

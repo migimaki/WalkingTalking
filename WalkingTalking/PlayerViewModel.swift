@@ -7,12 +7,12 @@
 //  Manages playback, recording, and speech recognition for language practice.
 //
 //  Flow:
-//  1. TTS speaks sentence
+//  1. Audio plays from Supabase
 //  2. Recording + Speech recognition start IMMEDIATELY (shadowing practice)
-//  3. User can speak along with TTS or wait until it finishes
+//  3. User can speak along with audio or wait until it finishes
 //  4. After ~1.5 seconds of silence, auto-advance to next sentence
 //
-//  Note: Requires headphones to prevent TTS audio from being picked up by mic
+//  Note: Requires headphones to prevent audio from being picked up by mic
 //
 
 import Foundation
@@ -22,7 +22,8 @@ import AVFoundation
 @Observable
 class PlayerViewModel {
     // Dependencies
-    private let ttsService: TextToSpeechService
+    private let audioPlayerService: AudioPlayerService
+    private let audioCacheService: AudioCacheService
     private let recordingService: AudioRecordingService
     private let silenceDetector: SilenceDetectionService
     private let speechRecognitionService: SpeechRecognitionService
@@ -39,6 +40,7 @@ class PlayerViewModel {
     var recognizedText: String = ""
     var recognizedTextBySentence: [Int: String] = [:] // Store recognized text per sentence index
     var errorMessage: String?
+    var isLoadingAudio: Bool = false
 
     enum PlaybackState {
         case idle
@@ -75,14 +77,34 @@ class PlayerViewModel {
         silenceDetector.isVoiceActive
     }
 
+    var isCompleted: Bool {
+        !isPlaying && currentSentenceIndex >= totalSentences - 1 && totalSentences > 0
+    }
+
+    // MARK: - Audio Device Info
+
+    var currentInputDevice: String {
+        audioSessionManager.getCurrentInputDevice()
+    }
+
+    var currentOutputDevice: String {
+        audioSessionManager.getCurrentOutputDevice()
+    }
+
+    var availableInputDevices: [String] {
+        audioSessionManager.getAvailableInputDevices()
+    }
+
     init(lesson: Lesson,
-         ttsService: TextToSpeechService = TextToSpeechService(),
+         audioPlayerService: AudioPlayerService = AudioPlayerService(),
+         audioCacheService: AudioCacheService = AudioCacheService.shared,
          recordingService: AudioRecordingService = AudioRecordingService(),
          silenceDetector: SilenceDetectionService = SilenceDetectionService(),
          speechRecognitionService: SpeechRecognitionService = SpeechRecognitionService(),
          audioSessionManager: AudioSessionManager = AudioSessionManager.shared) {
         self.lesson = lesson
-        self.ttsService = ttsService
+        self.audioPlayerService = audioPlayerService
+        self.audioCacheService = audioCacheService
         self.recordingService = recordingService
         self.silenceDetector = silenceDetector
         self.speechRecognitionService = speechRecognitionService
@@ -92,7 +114,7 @@ class PlayerViewModel {
     }
 
     private func setupDelegates() {
-        ttsService.delegate = self
+        audioPlayerService.delegate = self
         recordingService.delegate = self
         silenceDetector.delegate = self
         speechRecognitionService.delegate = self
@@ -104,7 +126,8 @@ class PlayerViewModel {
     func setup() {
         requestMicrophonePermission()
         requestSpeechRecognitionPermission()
-        restoreProgress()
+        // Always start from the first sentence
+        currentSentenceIndex = 0
     }
 
     func cleanup() {
@@ -116,7 +139,6 @@ class PlayerViewModel {
         currentSentenceIndex = 0
         recognizedText = ""
         recognizedTextBySentence.removeAll()
-        saveProgress()
     }
 
     private func requestMicrophonePermission() {
@@ -135,18 +157,7 @@ class PlayerViewModel {
         }
     }
 
-    private func restoreProgress() {
-        if let progress = lesson.progress {
-            currentSentenceIndex = progress.currentSentenceIndex
-        }
-    }
-
-    private func saveProgress() {
-        if lesson.progress == nil {
-            lesson.progress = LessonProgress()
-        }
-        lesson.progress?.updateProgress(currentIndex: currentSentenceIndex)
-    }
+    // Progress tracking disabled - always start from beginning
 
     // MARK: - Playback Controls
 
@@ -176,8 +187,8 @@ class PlayerViewModel {
         isPlaying = false
         playbackState = .idle
 
-        if ttsService.isSpeaking {
-            ttsService.stop()
+        if audioPlayerService.isPlaying {
+            audioPlayerService.stop()
         }
 
         if recordingService.isRecording {
@@ -189,14 +200,19 @@ class PlayerViewModel {
         if speechRecognitionService.isRecognizing {
             speechRecognitionService.stopRecognition()
         }
-
-        saveProgress()
     }
 
     func stop() {
         pause()
         currentSentenceIndex = 0
-        saveProgress()
+    }
+
+    func restart() {
+        pause()
+        currentSentenceIndex = 0
+        recognizedText = ""
+        recognizedTextBySentence.removeAll()
+        play()
     }
 
     func goToPreviousSentence() {
@@ -206,7 +222,6 @@ class PlayerViewModel {
         pause()
 
         currentSentenceIndex -= 1
-        saveProgress()
 
         if wasPlaying {
             play()
@@ -220,7 +235,6 @@ class PlayerViewModel {
         pause()
 
         currentSentenceIndex += 1
-        saveProgress()
 
         if wasPlaying {
             play()
@@ -237,38 +251,48 @@ class PlayerViewModel {
 
         playbackState = .speaking
 
-        // Configure for recording (playAndRecord allows both TTS and mic simultaneously)
-        do {
-            try audioSessionManager.configureForRecording()
-        } catch {
-            errorMessage = "Failed to configure audio: \(error.localizedDescription)"
-            pause()
-            return
-        }
+        // Download audio file if needed (async)
+        Task {
+            do {
+                isLoadingAudio = true
 
-        // Reset recognized text for new recording
-        recognizedText = ""
-        speechRecognitionService.resetText()
+                // Get audio file from cache or download from Supabase
+                let localAudioURL = try await audioCacheService.getAudioFile(from: sentence.audioURL)
 
-        // Start recording and speech recognition immediately (for shadowing practice)
-        do {
-            silenceDetector.resetSession()
-            // Disable silence counting during TTS playback
-            silenceDetector.isEnabled = false
+                // Configure for recording (playAndRecord allows both audio playback and mic simultaneously)
+                try audioSessionManager.configureForRecording()
 
-            try recordingService.startRecording()
-            isRecording = true
+                // Reset recognized text for new recording
+                recognizedText = ""
+                speechRecognitionService.resetText()
 
-            // Start speech recognition if permission granted
-            if hasSpeechRecognitionPermission {
-                try? speechRecognitionService.startRecognition()
+                // Start recording and speech recognition immediately (for shadowing practice)
+                do {
+                    silenceDetector.resetSession()
+                    // Disable silence counting during audio playback
+                    silenceDetector.isEnabled = false
+
+                    try recordingService.startRecording()
+                    isRecording = true
+
+                    // Start speech recognition if permission granted
+                    if hasSpeechRecognitionPermission {
+                        try? speechRecognitionService.startRecognition()
+                    }
+                } catch {
+                    errorMessage = "Failed to start recording: \(error.localizedDescription)"
+                }
+
+                // Play audio file (recording already running for shadowing)
+                try audioPlayerService.play(from: localAudioURL)
+                isLoadingAudio = false
+
+            } catch {
+                isLoadingAudio = false
+                errorMessage = "Failed to load audio: \(error.localizedDescription)"
+                pause()
             }
-        } catch {
-            errorMessage = "Failed to start recording: \(error.localizedDescription)"
         }
-
-        // Speak sentence (recording already running for shadowing)
-        ttsService.speak(sentence.text)
     }
 
     private func startListeningForUser() {
@@ -306,11 +330,9 @@ class PlayerViewModel {
             // Lesson complete
             pause()
             currentSentenceIndex = totalSentences - 1
-            saveProgress()
         } else {
             // Move to next sentence
             currentSentenceIndex += 1
-            saveProgress()
 
             if isPlaying {
                 // Continue playing
@@ -322,27 +344,28 @@ class PlayerViewModel {
     }
 }
 
-// MARK: - TextToSpeechServiceDelegate
+// MARK: - AudioPlayerServiceDelegate
 
-extension PlayerViewModel: TextToSpeechServiceDelegate {
-    func speechDidStart() {
-        // Speech started
+extension PlayerViewModel: AudioPlayerServiceDelegate {
+    func audioDidStart() {
+        // Audio playback started
     }
 
-    func speechDidFinish() {
+    func audioDidFinish() {
         guard isPlaying else { return }
 
         playbackState = .waitingForUser
 
-        // Enable silence counting now that TTS finished
+        // Enable silence counting now that audio finished
         silenceDetector.isEnabled = true
 
         // Transition to listening state (recording already running for shadowing)
         startListeningForUser()
     }
 
-    func speechDidCancel() {
-        // Speech was cancelled
+    func audioDidFail(error: Error) {
+        errorMessage = "Audio playback failed: \(error.localizedDescription)"
+        pause()
     }
 }
 

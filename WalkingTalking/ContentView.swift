@@ -78,37 +78,7 @@ struct ContentView: View {
     }
 }
 
-struct LessonRowView: View {
-    let lesson: Lesson
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(lesson.title)
-                .font(.headline)
-
-            if !lesson.lessonDescription.isEmpty {
-                Text(lesson.lessonDescription)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-            }
-
-            HStack {
-                Label("\(lesson.totalSentences) sentences", systemImage: "text.alignleft")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                if let progress = lesson.progress, progress.currentSentenceIndex > 0 {
-                    Spacer()
-                    Text("Progress: \(progress.currentSentenceIndex)/\(lesson.totalSentences)")
-                        .font(.caption)
-                        .foregroundColor(.blue)
-                }
-            }
-        }
-        .padding(.vertical, 4)
-    }
-}
+// LessonRowView moved to LessonListView.swift
 
 #Preview {
     let config = ModelConfiguration(isStoredInMemoryOnly: true)

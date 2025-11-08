@@ -62,6 +62,32 @@ class AudioSessionManager {
         }
     }
 
+    // MARK: - Audio Device Info
+
+    func getCurrentInputDevice() -> String {
+        let session = AVAudioSession.sharedInstance()
+        if let input = session.currentRoute.inputs.first {
+            return input.portName
+        }
+        return "No input device"
+    }
+
+    func getCurrentOutputDevice() -> String {
+        let session = AVAudioSession.sharedInstance()
+        if let output = session.currentRoute.outputs.first {
+            return output.portName
+        }
+        return "No output device"
+    }
+
+    func getAvailableInputDevices() -> [String] {
+        let session = AVAudioSession.sharedInstance()
+        guard let availableInputs = session.availableInputs else {
+            return []
+        }
+        return availableInputs.map { $0.portName }
+    }
+
     @objc private func handleInterruption(_ notification: Notification) {
         guard let userInfo = notification.userInfo,
               let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,

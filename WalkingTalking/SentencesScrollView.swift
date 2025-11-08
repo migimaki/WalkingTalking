@@ -21,15 +21,11 @@ struct SentencesScrollView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
-                        // Top padding to allow centering of first items
-                        Spacer()
-                            .frame(height: geometry.size.height * 0.4)
-
                         ForEach(Array(sentences.enumerated()), id: \.element.id) { index, sentence in
                             VStack(alignment: .leading, spacing: 8) {
                                 // Original sentence text
                                 Text(sentence.text)
-                                    .font(.body)
+                                    .font(.title3)
                                     .foregroundColor(textColor(for: index))
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .id(index)
@@ -44,12 +40,8 @@ struct SentencesScrollView: View {
                             }
                             .padding(.horizontal, 16)
                         }
-
-                        // Bottom padding to allow centering of last items
-                        Spacer()
-                            .frame(height: geometry.size.height * 0.4)
                     }
-                    .padding(.vertical, 16)
+                    .padding(.top, 16)
                 }
                 .scrollIndicators(.visible)
                 .onChange(of: currentIndex) { oldValue, newValue in
