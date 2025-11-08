@@ -81,6 +81,16 @@ class PlayerViewModel {
         !isPlaying && currentSentenceIndex >= totalSentences - 1 && totalSentences > 0
     }
 
+    // MARK: - Mic Level Info (for UI indicator)
+
+    var currentMicLevelDB: Float {
+        silenceDetector.currentAudioLevelDB
+    }
+
+    var micThresholdDB: Float {
+        silenceDetector.currentThresholdDB
+    }
+
     // MARK: - Audio Device Info
 
     var currentInputDevice: String {
@@ -271,6 +281,7 @@ class PlayerViewModel {
                     silenceDetector.resetSession()
                     // Disable silence counting during audio playback
                     silenceDetector.isEnabled = false
+                    print("[PlayerViewModel] Starting recording, silence detection disabled")
 
                     try recordingService.startRecording()
                     isRecording = true
@@ -354,6 +365,7 @@ extension PlayerViewModel: AudioPlayerServiceDelegate {
     func audioDidFinish() {
         guard isPlaying else { return }
 
+        print("[PlayerViewModel] Audio finished, enabling silence detection")
         playbackState = .waitingForUser
 
         // Enable silence counting now that audio finished
@@ -372,7 +384,15 @@ extension PlayerViewModel: AudioPlayerServiceDelegate {
 // MARK: - AudioRecordingServiceDelegate
 
 extension PlayerViewModel: AudioRecordingServiceDelegate {
+    private static var bufferCount = 0
+
     func didReceiveAudioBuffer(_ buffer: AVAudioPCMBuffer, time: AVAudioTime) {
+        // Log every 50th buffer to avoid spam
+        Self.bufferCount += 1
+        if Self.bufferCount % 50 == 0 {
+            print("[PlayerViewModel] Processing audio buffers, silence detection enabled: \(silenceDetector.isEnabled)")
+        }
+
         // Process buffer for silence detection
         silenceDetector.processAudioBuffer(buffer)
 
@@ -392,9 +412,14 @@ extension PlayerViewModel: AudioRecordingServiceDelegate {
 
 extension PlayerViewModel: SilenceDetectionDelegate {
     func silenceDetected() {
-        guard isPlaying && playbackState == .listeningToUser else { return }
+        print("[PlayerViewModel] Silence detected, isPlaying: \(isPlaying), playbackState: \(playbackState)")
+        guard isPlaying && playbackState == .listeningToUser else {
+            print("[PlayerViewModel] Not advancing: isPlaying=\(isPlaying), playbackState=\(playbackState)")
+            return
+        }
 
         // User finished speaking, advance to next sentence
+        print("[PlayerViewModel] Advancing to next sentence")
         DispatchQueue.main.async { [weak self] in
             self?.advanceToNextSentence()
         }
@@ -427,5 +452,11 @@ extension PlayerViewModel: AudioSessionManagerDelegate {
 
     func audioSessionResumed() {
         // Optionally auto-resume, but for now just pause
+    }
+
+    func audioRouteChanged() {
+        // Audio route changed (e.g., Bluetooth headphones connected)
+        // For now, just log the change - the audio engine will adapt automatically
+        print("Audio route changed to: \(audioSessionManager.getCurrentOutputDevice())")
     }
 }

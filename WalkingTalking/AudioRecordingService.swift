@@ -43,13 +43,27 @@ class AudioRecordingService {
             throw AudioRecordingError.inputNodeUnavailable
         }
 
+        // Get the current hardware format from the input node
         let inputFormat = inputNode.outputFormat(forBus: 0)
+
+        // Create a format converter if needed to handle different sample rates
+        // Use a standard format that works across all devices
+        let recordingFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: inputFormat.sampleRate,
+            channels: 1,
+            interleaved: false
+        )
+
+        guard let format = recordingFormat else {
+            throw AudioRecordingError.inputNodeUnavailable
+        }
 
         // Install tap on input node to receive audio buffers
         inputNode.installTap(
             onBus: 0,
             bufferSize: AudioConstants.audioBufferSize,
-            format: inputFormat
+            format: format
         ) { [weak self] buffer, time in
             self?.delegate?.didReceiveAudioBuffer(buffer, time: time)
         }

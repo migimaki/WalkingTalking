@@ -11,6 +11,7 @@ import Foundation
 protocol AudioSessionManagerDelegate: AnyObject {
     func audioSessionInterrupted()
     func audioSessionResumed()
+    func audioRouteChanged()
 }
 
 class AudioSessionManager {
@@ -126,6 +127,11 @@ class AudioSessionManager {
         case .oldDeviceUnavailable:
             // Headphones were unplugged, pause playback
             delegate?.audioSessionInterrupted()
+
+        case .newDeviceAvailable, .categoryChange:
+            // New audio device connected (e.g., Bluetooth) or category changed
+            // Notify delegate to reset audio engine for new format
+            delegate?.audioRouteChanged()
 
         default:
             break

@@ -13,7 +13,9 @@ enum AudioConstants {
     static let silenceThresholdDB: Float = -40.0
     static let silenceDuration: TimeInterval = 1.5  // seconds
     static let audioBufferSize: AVAudioFrameCount = 1024
-    static let requiredSilentFrames: Int = 30  // ~1.5 seconds at 20 fps
+    // At 48kHz (Bluetooth) with 1024 buffer: 1024/48000 = 21.3ms per buffer
+    // For ~1 second: 1000ms / 21.3ms = ~47 frames (compromise for responsiveness)
+    static let requiredSilentFrames: Int = 47  // ~1 second of silence
 
     // TTS Configuration
     static let defaultSpeechRate: Float = AVSpeechUtteranceDefaultSpeechRate
@@ -21,8 +23,8 @@ enum AudioConstants {
 
     // Audio Session
     static let audioSessionCategory: AVAudioSession.Category = .playAndRecord
-    static let audioSessionMode: AVAudioSession.Mode = .default
-    static let audioSessionOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker]
+    static let audioSessionMode: AVAudioSession.Mode = .voiceChat
+    static let audioSessionOptions: AVAudioSession.CategoryOptions = [.allowBluetooth]
 
     // UI
     static let minProgressBarHeight: CGFloat = 4.0
