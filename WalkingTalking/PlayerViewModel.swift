@@ -18,6 +18,7 @@
 import Foundation
 import SwiftData
 import AVFoundation
+import UIKit
 
 @Observable
 class PlayerViewModel {
@@ -145,6 +146,9 @@ class PlayerViewModel {
         speechRecognitionService.stopRecognition()
         audioSessionManager.deactivate()
 
+        // Re-enable screen auto-lock (in case user navigates away while playing)
+        UIApplication.shared.isIdleTimerDisabled = false
+
         // Reset to beginning for next time
         currentSentenceIndex = 0
         recognizedText = ""
@@ -201,6 +205,10 @@ class PlayerViewModel {
         }
         guard currentSentence != nil else { return }
 
+        // Keep screen on during practice (dims but doesn't lock)
+        UIApplication.shared.isIdleTimerDisabled = true
+        print("[PlayerViewModel] 🔆 Screen will stay on during practice")
+
         isPlaying = true
         playCurrentSentence()
     }
@@ -210,6 +218,10 @@ class PlayerViewModel {
 
         isPlaying = false
         playbackState = .idle
+
+        // Re-enable screen auto-lock
+        UIApplication.shared.isIdleTimerDisabled = false
+        print("[PlayerViewModel] 🌙 Screen auto-lock re-enabled")
 
         if audioPlayerService.isPlaying {
             audioPlayerService.stop()
