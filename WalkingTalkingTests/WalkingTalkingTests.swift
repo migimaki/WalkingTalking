@@ -78,19 +78,6 @@ final class WalkingTalkingTests: XCTestCase {
         XCTAssertEqual(progress.completedSentences, 0)
     }
 
-    // MARK: - SilenceDetectionService Tests
-
-    func testSilenceDetectionInitialState() throws {
-        let detector = SilenceDetectionService()
-        XCTAssertFalse(detector.isVoiceActive)
-    }
-
-    func testSilenceDetectionResetSession() throws {
-        let detector = SilenceDetectionService()
-        detector.resetSession()
-        XCTAssertFalse(detector.isVoiceActive)
-    }
-
     // MARK: - PlayerViewModel Tests
 
     func testPlayerViewModelInitialization() throws {

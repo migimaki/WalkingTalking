@@ -10,9 +10,9 @@
 //  1. Audio plays from Supabase
 //  2. Recording + Speech recognition start IMMEDIATELY (shadowing practice)
 //  3. User can speak along with audio or wait until it finishes
-//  4. After ~1.5 seconds of silence, auto-advance to next sentence
+//  4. After ~1 second of no speech transcription, auto-advance to next sentence
 //
-//  Note: Requires headphones to prevent audio from being picked up by mic
+//  Note: Uses speech-to-text for auto-advance. Environmental noise won't trigger false advances.
 //
 
 import Foundation
@@ -26,9 +26,12 @@ class PlayerViewModel {
     private let audioPlayerService: AudioPlayerService
     private let audioCacheService: AudioCacheService
     private let recordingService: AudioRecordingService
-    private let silenceDetector: SilenceDetectionService
     private let speechRecognitionService: SpeechRecognitionService
     private let audioSessionManager: AudioSessionManager
+
+    // Speech-based silence detection
+    private var speechTimeoutTimer: Timer?
+    private var startedListeningTime: Date?
 
     // State
     var lesson: Lesson
@@ -74,22 +77,8 @@ class PlayerViewModel {
         currentSentenceIndex < totalSentences - 1
     }
 
-    var isVoiceActive: Bool {
-        silenceDetector.isVoiceActive
-    }
-
     var isCompleted: Bool {
         !isPlaying && currentSentenceIndex >= totalSentences - 1 && totalSentences > 0
-    }
-
-    // MARK: - Mic Level Info (for UI indicator)
-
-    var currentMicLevelDB: Float {
-        silenceDetector.currentAudioLevelDB
-    }
-
-    var micThresholdDB: Float {
-        silenceDetector.currentThresholdDB
     }
 
     // MARK: - Audio Device Info
@@ -110,14 +99,12 @@ class PlayerViewModel {
          audioPlayerService: AudioPlayerService = AudioPlayerService(),
          audioCacheService: AudioCacheService = AudioCacheService.shared,
          recordingService: AudioRecordingService = AudioRecordingService(),
-         silenceDetector: SilenceDetectionService = SilenceDetectionService(),
          speechRecognitionService: SpeechRecognitionService = SpeechRecognitionService(),
          audioSessionManager: AudioSessionManager = AudioSessionManager.shared) {
         self.lesson = lesson
         self.audioPlayerService = audioPlayerService
         self.audioCacheService = audioCacheService
         self.recordingService = recordingService
-        self.silenceDetector = silenceDetector
         self.speechRecognitionService = speechRecognitionService
         self.audioSessionManager = audioSessionManager
 
@@ -127,7 +114,6 @@ class PlayerViewModel {
     private func setupDelegates() {
         audioPlayerService.delegate = self
         recordingService.delegate = self
-        silenceDetector.delegate = self
         speechRecognitionService.delegate = self
         audioSessionManager.delegate = self
     }
@@ -143,6 +129,7 @@ class PlayerViewModel {
 
     func cleanup() {
         stop()
+        stopSpeechTimeoutTimer()
         speechRecognitionService.stopRecognition()
         audioSessionManager.deactivate()
 
@@ -153,6 +140,7 @@ class PlayerViewModel {
         currentSentenceIndex = 0
         recognizedText = ""
         recognizedTextBySentence.removeAll()
+        startedListeningTime = nil
     }
 
     func handleBackground() {
@@ -203,6 +191,10 @@ class PlayerViewModel {
             errorMessage = "Please grant microphone permission to continue"
             return
         }
+        guard hasSpeechRecognitionPermission else {
+            errorMessage = "Speech recognition is required for practice. Please enable it in Settings."
+            return
+        }
         guard currentSentence != nil else { return }
 
         // Keep screen on during practice (dims but doesn't lock)
@@ -223,6 +215,8 @@ class PlayerViewModel {
         UIApplication.shared.isIdleTimerDisabled = false
         print("[PlayerViewModel] 🌙 Screen auto-lock re-enabled")
 
+        stopSpeechTimeoutTimer()
+
         if audioPlayerService.isPlaying {
             audioPlayerService.stop()
         }
@@ -230,12 +224,13 @@ class PlayerViewModel {
         if recordingService.isRecording {
             recordingService.stopRecording()
             isRecording = false
-            silenceDetector.resetSession()
         }
 
         if speechRecognitionService.isRecognizing {
             speechRecognitionService.stopRecognition()
         }
+
+        startedListeningTime = nil
     }
 
     func stop() {
@@ -304,20 +299,17 @@ class PlayerViewModel {
 
                 // Start recording and speech recognition immediately (for shadowing practice)
                 do {
-                    silenceDetector.resetSession()
-                    // Disable silence counting during audio playback
-                    silenceDetector.isEnabled = false
-                    print("[PlayerViewModel] Starting recording, silence detection disabled")
+                    print("[PlayerViewModel] Starting recording")
 
                     try recordingService.startRecording()
                     isRecording = true
 
-                    // Start speech recognition if permission granted
-                    if hasSpeechRecognitionPermission {
-                        try? speechRecognitionService.startRecognition()
-                    }
+                    // Start speech recognition
+                    try speechRecognitionService.startRecognition()
                 } catch {
-                    errorMessage = "Failed to start recording: \(error.localizedDescription)"
+                    errorMessage = "Failed to start recording or speech recognition: \(error.localizedDescription)"
+                    pause()
+                    return
                 }
 
                 // Play audio file (recording already running for shadowing)
@@ -391,11 +383,11 @@ extension PlayerViewModel: AudioPlayerServiceDelegate {
     func audioDidFinish() {
         guard isPlaying else { return }
 
-        print("[PlayerViewModel] Audio finished, enabling silence detection")
+        print("[PlayerViewModel] Audio finished, starting speech timeout monitoring")
         playbackState = .waitingForUser
 
-        // Enable silence counting now that audio finished
-        silenceDetector.isEnabled = true
+        // Start monitoring for speech timeout now that audio finished
+        startSpeechTimeoutTimer()
 
         // Transition to listening state (recording already running for shadowing)
         startListeningForUser()
@@ -410,19 +402,8 @@ extension PlayerViewModel: AudioPlayerServiceDelegate {
 // MARK: - AudioRecordingServiceDelegate
 
 extension PlayerViewModel: AudioRecordingServiceDelegate {
-    private static var bufferCount = 0
-
     func didReceiveAudioBuffer(_ buffer: AVAudioPCMBuffer, time: AVAudioTime) {
-        // Log every 50th buffer to avoid spam
-        Self.bufferCount += 1
-        if Self.bufferCount % 50 == 0 {
-            print("[PlayerViewModel] Processing audio buffers, silence detection enabled: \(silenceDetector.isEnabled)")
-        }
-
-        // Process buffer for silence detection
-        silenceDetector.processAudioBuffer(buffer)
-
-        // Process buffer for speech recognition
+        // Process buffer for speech recognition only
         if speechRecognitionService.isRecognizing {
             speechRecognitionService.processAudioBuffer(buffer)
         }
@@ -434,25 +415,59 @@ extension PlayerViewModel: AudioRecordingServiceDelegate {
     }
 }
 
-// MARK: - SilenceDetectionDelegate
+// MARK: - Speech Timeout Management
 
-extension PlayerViewModel: SilenceDetectionDelegate {
-    func silenceDetected() {
-        print("[PlayerViewModel] Silence detected, isPlaying: \(isPlaying), playbackState: \(playbackState)")
-        guard isPlaying && playbackState == .listeningToUser else {
-            print("[PlayerViewModel] Not advancing: isPlaying=\(isPlaying), playbackState=\(playbackState)")
-            return
-        }
+extension PlayerViewModel {
+    private func startSpeechTimeoutTimer() {
+        stopSpeechTimeoutTimer()
 
-        // User finished speaking, advance to next sentence
-        print("[PlayerViewModel] Advancing to next sentence")
-        DispatchQueue.main.async { [weak self] in
-            self?.advanceToNextSentence()
+        // Record when we started listening
+        startedListeningTime = Date()
+
+        // Check every 0.1 seconds if speech has timed out
+        speechTimeoutTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            self?.checkSpeechTimeout()
         }
     }
 
-    func voiceActivityDetected() {
-        // Voice activity detected (for UI feedback)
+    private func stopSpeechTimeoutTimer() {
+        speechTimeoutTimer?.invalidate()
+        speechTimeoutTimer = nil
+    }
+
+    private func checkSpeechTimeout() {
+        guard isPlaying && playbackState == .listeningToUser else { return }
+
+        // Determine which time to use:
+        // - If user has spoken (lastTranscriptionTime exists), check time since last speech
+        // - If user hasn't spoken at all, check time since we started listening
+        let referenceTime: Date
+        let description: String
+
+        if let lastSpeechTime = speechRecognitionService.lastTranscriptionTime {
+            // User has spoken - wait for silence after their last speech
+            referenceTime = lastSpeechTime
+            description = "since last speech"
+        } else if let startTime = startedListeningTime {
+            // User hasn't spoken at all - wait for timeout from when we started listening
+            referenceTime = startTime
+            description = "with no speech input"
+        } else {
+            // No reference time available yet
+            return
+        }
+
+        let timeInterval = Date().timeIntervalSince(referenceTime)
+
+        // If more than 1 second has passed, advance
+        if timeInterval >= AudioConstants.speechSilenceTimeout {
+            print("[PlayerViewModel] Speech timeout detected (\(String(format: "%.1f", timeInterval))s \(description)), advancing to next sentence")
+            stopSpeechTimeoutTimer()
+
+            DispatchQueue.main.async { [weak self] in
+                self?.advanceToNextSentence()
+            }
+        }
     }
 }
 

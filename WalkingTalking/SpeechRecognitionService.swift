@@ -28,6 +28,7 @@ class SpeechRecognitionService {
 
     private(set) var isRecognizing = false
     private(set) var recognizedText = ""
+    private(set) var lastTranscriptionTime: Date?
 
     init(locale: Locale = Locale(identifier: "en-US")) {
         self.speechRecognizer = SFSpeechRecognizer(locale: locale)
@@ -82,6 +83,11 @@ class SpeechRecognitionService {
                 let transcription = result.bestTranscription.formattedString
                 self.recognizedText = transcription
 
+                // Update timestamp for any transcription (partial or final)
+                if !transcription.isEmpty {
+                    self.lastTranscriptionTime = Date()
+                }
+
                 DispatchQueue.main.async {
                     self.delegate?.didRecognizeText(transcription)
                 }
@@ -107,9 +113,11 @@ class SpeechRecognitionService {
         recognitionRequest = nil
         recognitionTask = nil
         isRecognizing = false
+        lastTranscriptionTime = nil
     }
 
     func resetText() {
         recognizedText = ""
+        lastTranscriptionTime = nil
     }
 }

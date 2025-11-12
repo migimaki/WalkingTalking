@@ -54,13 +54,6 @@ struct PlayerView: View {
 
             // Bottom controls area
             VStack(spacing: 0) {
-                // Mic level indicator bar
-                MicLevelBar(
-                    currentLevelDB: viewModel.currentMicLevelDB,
-                    thresholdDB: viewModel.micThresholdDB,
-                    isRecording: viewModel.isRecording
-                )
-
                 // Discrete border
                 Divider()
                     .background(Color.gray.opacity(0.3))

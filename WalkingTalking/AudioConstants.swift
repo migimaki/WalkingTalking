@@ -9,13 +9,9 @@ import AVFoundation
 import SwiftUI
 
 enum AudioConstants {
-    // Silence Detection
-    static let silenceThresholdDB: Float = -40.0
-    static let silenceDuration: TimeInterval = 1.5  // seconds
+    // Speech-based silence detection (using speech-to-text transcription)
+    static let speechSilenceTimeout: TimeInterval = 2.0  // seconds without speech transcription
     static let audioBufferSize: AVAudioFrameCount = 1024
-    // At 48kHz (Bluetooth) with 1024 buffer: 1024/48000 = 21.3ms per buffer
-    // For ~1 second: 1000ms / 21.3ms = ~47 frames (compromise for responsiveness)
-    static let requiredSilentFrames: Int = 47  // ~1 second of silence
 
     // TTS Configuration
     static let defaultSpeechRate: Float = AVSpeechUtteranceDefaultSpeechRate
