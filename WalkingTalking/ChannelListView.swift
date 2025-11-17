@@ -10,17 +10,37 @@ import SwiftData
 
 struct ChannelListView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var channels: [Channel]
+    @AppStorage("learningLanguage") private var learningLanguage: String = "en"
+    @State private var showSettings = false
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+
+    private let repository = LessonRepository()
+    private var settings: UserSettings { UserSettings.shared }
+
+    // Computed property to get filtered channels based on learning language
+    private var channels: [Channel] {
+        let descriptor = FetchDescriptor<Channel>(
+            predicate: #Predicate { channel in
+                channel.language == learningLanguage
+            },
+            sortBy: [SortDescriptor(\Channel.name)]
+        )
+
+        return (try? modelContext.fetch(descriptor)) ?? []
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
-                if channels.isEmpty {
+                if isLoading {
+                    ProgressView("Loading channels...")
+                } else if channels.isEmpty {
                     // Empty state
                     ContentUnavailableView {
                         Label("No Channels", systemImage: "antenna.radiowaves.left.and.right.slash")
                     } description: {
-                        Text("Channels will appear here")
+                        Text("No channels available for \(settings.language(for: learningLanguage)?.displayName ?? ""). Tap the refresh button to load channels from Supabase.")
                     }
                 } else {
                     List {
@@ -34,36 +54,74 @@ struct ChannelListView: View {
                     }
                 }
             }
-            .navigationTitle("Channels")
+            .navigationTitle("Channels - \(settings.language(for: learningLanguage)?.nativeName ?? "")")
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: initializeChannels) {
-                        Label("Initialize", systemImage: "arrow.clockwise")
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Label("Settings", systemImage: "gearshape")
                     }
+                }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        Task {
+                            await fetchChannelsFromSupabase()
+                        }
+                    }) {
+                        Label("Refresh", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(isLoading)
                 }
             }
             .onAppear {
-                // Initialize default channel if needed
+                // Fetch channels from Supabase if needed
                 if channels.isEmpty {
-                    initializeChannels()
+                    Task {
+                        await fetchChannelsFromSupabase()
+                    }
                 }
+            }
+            .onChange(of: learningLanguage) { oldValue, newValue in
+                // Automatically fetch channels when learning language changes
+                Task {
+                    await fetchChannelsFromSupabase()
+                }
+            }
+            .alert("Error", isPresented: .constant(errorMessage != nil)) {
+                Button("OK") {
+                    errorMessage = nil
+                }
+            } message: {
+                if let errorMessage = errorMessage {
+                    Text(errorMessage)
+                }
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
             }
         }
     }
 
-    private func initializeChannels() {
-        // Add Euro News channel if it doesn't exist
-        let euroNewsId = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
-        let descriptor = FetchDescriptor<Channel>(
-            predicate: #Predicate { $0.id == euroNewsId }
-        )
+    private func fetchChannelsFromSupabase() async {
+        isLoading = true
+        errorMessage = nil
 
-        if let existingChannels = try? modelContext.fetch(descriptor),
-           existingChannels.isEmpty {
-            let euroNews = Channel.euroNews
-            modelContext.insert(euroNews)
-            try? modelContext.save()
+        do {
+            // Fetch channels for the selected learning language from Supabase
+            let channelDTOs = try await repository.fetchChannels(for: learningLanguage)
+
+            // Save to SwiftData
+            try repository.saveChannelsToSwiftData(channelDTOs, modelContext: modelContext)
+
+            print("Successfully fetched and saved \(channelDTOs.count) channels for \(learningLanguage) from Supabase")
+        } catch {
+            errorMessage = "Failed to fetch channels: \(error.localizedDescription)"
+            print("Error fetching channels: \(error)")
         }
+
+        isLoading = false
     }
 }
 

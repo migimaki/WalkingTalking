@@ -104,8 +104,8 @@ struct LessonListView: View {
         do {
             let repository = LessonRepository()
 
-            // Fetch all lessons
-            let lessonDTOs = try await repository.fetchAllLessons()
+            // Fetch lessons for this specific channel
+            let lessonDTOs = try await repository.fetchLessons(for: channel.id)
 
             // Fetch sentences for each lesson
             var sentencesDict: [UUID: [SentenceDTO]] = [:]
@@ -122,7 +122,7 @@ struct LessonListView: View {
                 channel: channel
             )
 
-            print("✅ Successfully fetched \(lessonDTOs.count) lessons from Supabase")
+            print("✅ Successfully fetched \(lessonDTOs.count) lessons for channel '\(channel.name)' from Supabase")
 
         } catch {
             errorMessage = "Failed to fetch lessons: \(error.localizedDescription)"

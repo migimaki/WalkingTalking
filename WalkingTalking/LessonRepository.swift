@@ -17,11 +17,93 @@ class LessonRepository {
         self.client = client
     }
 
+    // MARK: - Channel Methods
+
+    /// Fetch all channels from Supabase
+    func fetchAllChannels() async throws -> [ChannelDTO] {
+        let response: [ChannelDTO] = try await client.database
+            .from("channels")
+            .select()
+            .order("name", ascending: true)
+            .execute()
+            .value
+
+        return response
+    }
+
+    /// Fetch channels for a specific language
+    func fetchChannels(for language: String) async throws -> [ChannelDTO] {
+        let response: [ChannelDTO] = try await client.database
+            .from("channels")
+            .select()
+            .eq("language", value: language)
+            .order("name", ascending: true)
+            .execute()
+            .value
+
+        return response
+    }
+
+    /// Save channels to SwiftData
+    func saveChannelsToSwiftData(_ channelDTOs: [ChannelDTO], modelContext: ModelContext) throws {
+        for channelDTO in channelDTOs {
+            // Check if channel already exists
+            let descriptor = FetchDescriptor<Channel>(
+                predicate: #Predicate { $0.id == channelDTO.id }
+            )
+
+            let existingChannels = try modelContext.fetch(descriptor)
+
+            if existingChannels.isEmpty {
+                // Create new channel
+                let channel = Channel(
+                    id: channelDTO.id,
+                    name: channelDTO.name,
+                    description: channelDTO.description,
+                    iconName: channelDTO.icon_name,
+                    language: channelDTO.language
+                )
+
+                modelContext.insert(channel)
+            }
+        }
+
+        try modelContext.save()
+    }
+
+    // MARK: - Lesson Methods
+
     /// Fetch all lessons from Supabase
     func fetchAllLessons() async throws -> [LessonDTO] {
         let response: [LessonDTO] = try await client.database
             .from("lessons")
             .select()
+            .order("date", ascending: false)
+            .execute()
+            .value
+
+        return response
+    }
+
+    /// Fetch lessons for a specific language
+    func fetchLessons(for language: String) async throws -> [LessonDTO] {
+        let response: [LessonDTO] = try await client.database
+            .from("lessons")
+            .select()
+            .eq("language", value: language)
+            .order("date", ascending: false)
+            .execute()
+            .value
+
+        return response
+    }
+
+    /// Fetch lessons for a specific channel
+    func fetchLessons(for channelId: UUID) async throws -> [LessonDTO] {
+        let response: [LessonDTO] = try await client.database
+            .from("lessons")
+            .select()
+            .eq("channel_id", value: channelId.uuidString)
             .order("date", ascending: false)
             .execute()
             .value
@@ -103,7 +185,8 @@ class LessonRepository {
                     title: lessonDTO.title,
                     description: "", // No description in Supabase yet
                     date: lessonDTO.parsedDate,
-                    sourceURL: lessonDTO.source_url
+                    sourceURL: lessonDTO.source_url,
+                    language: lessonDTO.language
                 )
                 lesson.channel = channel
 
