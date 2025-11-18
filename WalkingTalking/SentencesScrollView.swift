@@ -13,22 +13,32 @@ struct SentencesScrollView: View {
     let isPlaying: Bool
     let recognizedTextBySentence: [Int: String]
     let currentRecognizedText: String
+    let viewMode: PlayerViewModel.ViewMode
+    let translationSentences: [String]
 
     @Namespace private var sentenceNamespace
 
     var body: some View {
-        GeometryReader { geometry in
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        ForEach(Array(sentences.enumerated()), id: \.element.id) { index, sentence in
-                            VStack(alignment: .leading, spacing: 8) {
-                                // Original sentence text
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    ForEach(Array(sentences.enumerated()), id: \.element.id) { index, sentence in
+                        VStack(alignment: .leading, spacing: 8) {
+                            // Display based on view mode
+                            if viewMode != .shadowing {
+                                // Always show original sentence
                                 Text(sentence.text)
                                     .font(.title3)
                                     .foregroundColor(textColor(for: index))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
                                     .id(index)
+
+                                // Show translation below in translation mode
+                                if viewMode == .translation, index < translationSentences.count {
+                                    Text(translationSentences[index])
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                        .padding(.top, 2)
+                                }
 
                                 // Recognized text with color-coded comparison (if available)
                                 if let recognizedText = getRecognizedText(for: index), !recognizedText.isEmpty {
@@ -37,23 +47,30 @@ struct SentencesScrollView: View {
                                         recognizedText: recognizedText
                                     )
                                 }
+                            } else {
+                                // Shadowing mode: completely empty
+                                Color.clear
+                                    .frame(height: 100)
+                                    .id(index)
                             }
-                            .padding(.horizontal, 16)
                         }
-                    }
-                    .padding(.top, 16)
-                }
-                .scrollIndicators(.visible)
-                .onChange(of: currentIndex) { oldValue, newValue in
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        proxy.scrollTo(newValue, anchor: .center)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
                     }
                 }
-                .onAppear {
-                    // Scroll to current sentence on appear
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        proxy.scrollTo(currentIndex, anchor: .center)
-                    }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
+            }
+            .scrollIndicators(.visible)
+            .onChange(of: currentIndex) { oldValue, newValue in
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    proxy.scrollTo(newValue, anchor: .center)
+                }
+            }
+            .onAppear {
+                // Scroll to current sentence on appear
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    proxy.scrollTo(currentIndex, anchor: .center)
                 }
             }
         }
@@ -99,7 +116,9 @@ struct SentencesScrollView: View {
             currentIndex: 2,
             isPlaying: true,
             recognizedTextBySentence: recognizedTexts,
-            currentRecognizedText: "Over the past few years we've seen AI models..."
+            currentRecognizedText: "Over the past few years we've seen AI models...",
+            viewMode: .original,
+            translationSentences: []
         )
     }
 }

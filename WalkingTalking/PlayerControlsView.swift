@@ -16,7 +16,7 @@ struct PlayerControlsView: View {
     let onForward: () -> Void
 
     var body: some View {
-        HStack(spacing: 40) {
+        HStack(spacing: 16) {
             // Rewind button
             Button(action: onRewind) {
                 Image(systemName: "backward.fill")

@@ -15,6 +15,7 @@ struct PlayerView: View {
 
     @State private var viewModel: PlayerViewModel
     @State private var showDebugMenu = false
+    @State private var showCompletionPopup = false
 
     init(lesson: Lesson) {
         _viewModel = State(initialValue: PlayerViewModel(lesson: lesson))
@@ -29,7 +30,7 @@ struct PlayerView: View {
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
-                    .padding(.horizontal)
+                    .padding(.horizontal, 20)
                     .padding(.vertical, 8)
                     .background(Color(.systemGroupedBackground))
             }
@@ -41,7 +42,9 @@ struct PlayerView: View {
                     currentIndex: viewModel.currentSentenceIndex,
                     isPlaying: viewModel.isPlaying,
                     recognizedTextBySentence: viewModel.recognizedTextBySentence,
-                    currentRecognizedText: viewModel.recognizedText
+                    currentRecognizedText: viewModel.recognizedText,
+                    viewMode: viewModel.viewMode,
+                    translationSentences: viewModel.translationSentences
                 )
                 .background(Color(.systemBackground))
             } else {
@@ -58,8 +61,14 @@ struct PlayerView: View {
                 Divider()
                     .background(Color.gray.opacity(0.3))
 
-                VStack(spacing: 12) {
-                    // Player controls
+                HStack(spacing: 16) {
+                    // View mode toggle button on the left
+                    ViewModeToggleButton(
+                        viewMode: viewModel.viewMode,
+                        onToggle: { viewModel.toggleViewMode() }
+                    )
+
+                    // Player controls in the center
                     PlayerControlsView(
                         isPlaying: viewModel.isPlaying,
                         canGoBack: viewModel.canGoToPrevious,
@@ -68,8 +77,21 @@ struct PlayerView: View {
                         onRewind: { viewModel.goToPreviousSentence() },
                         onForward: { viewModel.goToNextSentence() }
                     )
+
+                    // Lock button on the right
+                    Button(action: {
+                        // TODO: Implement lock functionality
+                        print("Lock button tapped")
+                    }) {
+                        Image(systemName: "lock.fill")
+                            .font(.title2)
+                            .foregroundColor(.secondary)
+                            .frame(width: 60, height: 60)
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.vertical, 12)
+                .padding(.horizontal, 16)
             }
         }
         .navigationTitle(viewModel.lesson.title)
@@ -83,6 +105,32 @@ struct PlayerView: View {
                 }
             }
         }
+        .overlay {
+            if showCompletionPopup {
+                ZStack {
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            // Dismiss on background tap
+                            showCompletionPopup = false
+                        }
+
+                    CompletionPopupView(
+                        accuracyScore: viewModel.currentAccuracyScore,
+                        speedScore: viewModel.currentSpeedScore,
+                        bestAccuracyScore: viewModel.bestAccuracyScore,
+                        bestSpeedScore: viewModel.bestSpeedScore,
+                        onTryAgain: {
+                            showCompletionPopup = false
+                            viewModel.restart()
+                        },
+                        onClose: {
+                            showCompletionPopup = false
+                        }
+                    )
+                }
+            }
+        }
         .sheet(isPresented: $showDebugMenu) {
             AudioDeviceDebugView(viewModel: viewModel)
         }
@@ -91,6 +139,11 @@ struct PlayerView: View {
         }
         .onDisappear {
             viewModel.cleanup()
+        }
+        .onChange(of: viewModel.isCompleted) { _, isCompleted in
+            if isCompleted {
+                showCompletionPopup = true
+            }
         }
         .onChange(of: scenePhase) { oldPhase, newPhase in
             switch newPhase {
