@@ -24,7 +24,7 @@ struct ChannelListView: View {
             predicate: #Predicate { channel in
                 channel.language == learningLanguage
             },
-            sortBy: [SortDescriptor(\Channel.name)]
+            sortBy: [SortDescriptor(\Channel.title)]
         )
 
         return (try? modelContext.fetch(descriptor)) ?? []
@@ -132,16 +132,44 @@ struct ChannelRow: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            // Channel icon
-            Image(systemName: channel.iconName)
-                .font(.title)
-                .foregroundStyle(.blue)
-                .frame(width: 50, height: 50)
-                .background(Color.blue.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+            // Channel cover image or icon
+            if let coverImageURL = channel.coverImageURL, let url = URL(string: coverImageURL) {
+                // Show cover image
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        ProgressView()
+                            .frame(width: 50, height: 50)
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 50, height: 50)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    case .failure:
+                        // Fallback to icon if image fails to load
+                        Image(systemName: channel.iconName)
+                            .font(.title)
+                            .foregroundStyle(.blue)
+                            .frame(width: 50, height: 50)
+                            .background(Color.blue.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+            } else {
+                // No cover image, show icon
+                Image(systemName: channel.iconName)
+                    .font(.title)
+                    .foregroundStyle(.blue)
+                    .frame(width: 50, height: 50)
+                    .background(Color.blue.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(channel.name)
+                Text(channel.title)
                     .font(.headline)
 
                 Text(channel.channelDescription)

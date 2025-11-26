@@ -24,7 +24,7 @@ class LessonRepository {
         let response: [ChannelDTO] = try await client.database
             .from("channels")
             .select()
-            .order("name", ascending: true)
+            .order("title", ascending: true)
             .execute()
             .value
 
@@ -37,7 +37,7 @@ class LessonRepository {
             .from("channels")
             .select()
             .eq("language", value: language)
-            .order("name", ascending: true)
+            .order("title", ascending: true)
             .execute()
             .value
 
@@ -58,13 +58,20 @@ class LessonRepository {
                 // Create new channel
                 let channel = Channel(
                     id: channelDTO.id,
-                    name: channelDTO.name,
+                    title: channelDTO.title,
+                    subtitle: channelDTO.subtitle ?? "",
                     description: channelDTO.description,
+                    coverImageURL: channelDTO.cover_image_url,
                     iconName: channelDTO.icon_name,
                     language: channelDTO.language
                 )
 
                 modelContext.insert(channel)
+            } else if let existingChannel = existingChannels.first {
+                // Update existing channel with new fields
+                existingChannel.title = channelDTO.title
+                existingChannel.subtitle = channelDTO.subtitle ?? existingChannel.subtitle
+                existingChannel.coverImageURL = channelDTO.cover_image_url
             }
         }
 
@@ -168,6 +175,46 @@ class LessonRepository {
         return (lesson, sentences)
     }
 
+    /// Fetch related lessons (same content, different languages) by content_group_id
+    func fetchRelatedLessons(for contentGroupId: UUID) async throws -> [LessonDTO] {
+        let response: [LessonDTO] = try await client.database
+            .from("lessons")
+            .select()
+            .eq("content_group_id", value: contentGroupId.uuidString)
+            .order("language", ascending: true)
+            .execute()
+            .value
+
+        return response
+    }
+
+    /// Fetch translation sentences for a lesson in a target language
+    /// - Parameters:
+    ///   - contentGroupId: The content group ID linking related lessons
+    ///   - targetLanguage: The language code for the translation (e.g., "ja", "en", "fr")
+    /// - Returns: Array of sentence texts in the target language, ordered by sentence index
+    func fetchTranslationSentences(contentGroupId: UUID, targetLanguage: String) async throws -> [String] {
+        // First, find the lesson in the target language
+        let lessons: [LessonDTO] = try await client.database
+            .from("lessons")
+            .select()
+            .eq("content_group_id", value: contentGroupId.uuidString)
+            .eq("language", value: targetLanguage)
+            .limit(1)
+            .execute()
+            .value
+
+        guard let targetLesson = lessons.first else {
+            throw RepositoryError.lessonNotFound
+        }
+
+        // Fetch sentences for that lesson
+        let sentences = try await fetchSentences(for: targetLesson.id)
+
+        // Return just the text, ordered by index
+        return sentences.map { $0.text }
+    }
+
     /// Save lessons and sentences to SwiftData
     func saveLessonsToSwiftData(_ lessonDTOs: [LessonDTO], sentences: [UUID: [SentenceDTO]], modelContext: ModelContext, channel: Channel) throws {
         for lessonDTO in lessonDTOs {
@@ -186,7 +233,8 @@ class LessonRepository {
                     description: "", // No description in Supabase yet
                     date: lessonDTO.parsedDate,
                     sourceURL: lessonDTO.source_url,
-                    language: lessonDTO.language
+                    language: lessonDTO.language,
+                    contentGroupId: lessonDTO.content_group_id
                 )
                 lesson.channel = channel
 

@@ -12,14 +12,17 @@ import Foundation
 /// Channel data from Supabase
 struct ChannelDTO: Codable {
     let id: UUID
-    let name: String
+    let title: String
+    let subtitle: String?
     let description: String
+    let cover_image_url: String?
     let icon_name: String
     let language: String
     let created_at: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, description, language, created_at
+        case id, title, subtitle, description, language, created_at
+        case cover_image_url
         case icon_name
     }
 }
@@ -32,12 +35,14 @@ struct LessonDTO: Codable {
     let date: String // "YYYY-MM-DD" format
     let language: String
     let channel_id: UUID
+    let content_group_id: UUID?
     let created_at: String?
 
     enum CodingKeys: String, CodingKey {
         case id, title, date, language, created_at
         case source_url
         case channel_id
+        case content_group_id
     }
 
     var parsedDate: Date {

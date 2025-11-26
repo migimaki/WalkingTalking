@@ -432,6 +432,7 @@
 				DEVELOPMENT_TEAM = AFU8AWBV43;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = KeepTalking;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "WalkingTalking needs microphone access to record your pronunciation practice and help you learn English.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "WalkingTalking uses speech recognition to show you what you said and help improve your pronunciation.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -467,6 +468,7 @@
 				DEVELOPMENT_TEAM = AFU8AWBV43;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = KeepTalking;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "WalkingTalking needs microphone access to record your pronunciation practice and help you learn English.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "WalkingTalking uses speech recognition to show you what you said and help improve your pronunciation.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

@@ -16,6 +16,8 @@ final class Lesson {
     var date: Date // Publication date from news article
     var sourceURL: String // Original article URL
     var createdDate: Date
+    var language: String // Language code: en, ja, fr
+    var contentGroupId: UUID? // Links lessons with same content in different languages
 
     @Relationship(deleteRule: .cascade)
     var sentences: [Sentence]
@@ -26,13 +28,15 @@ final class Lesson {
     @Relationship(inverse: \Channel.lessons)
     var channel: Channel?
 
-    init(id: UUID = UUID(), title: String, description: String, date: Date = Date(), sourceURL: String = "") {
+    init(id: UUID = UUID(), title: String, description: String, date: Date = Date(), sourceURL: String = "", language: String = "en", contentGroupId: UUID? = nil) {
         self.id = id
         self.title = title
         self.lessonDescription = description
         self.date = date
         self.sourceURL = sourceURL
         self.createdDate = Date()
+        self.language = language
+        self.contentGroupId = contentGroupId
         self.sentences = []
     }
 

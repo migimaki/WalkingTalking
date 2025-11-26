@@ -16,6 +16,12 @@ final class LessonProgress {
     var lastPlayedDate: Date
     var totalPracticeTime: TimeInterval
 
+    // Best score tracking
+    var bestAccuracyScore: Double
+    var bestSpeedScore: Double
+    var bestTotalScore: Double
+    var bestScoreDate: Date?
+
     @Relationship(inverse: \Lesson.progress)
     var lesson: Lesson?
 
@@ -25,6 +31,10 @@ final class LessonProgress {
         self.completedSentences = 0
         self.lastPlayedDate = Date()
         self.totalPracticeTime = 0
+        self.bestAccuracyScore = 0.0
+        self.bestSpeedScore = 0.0
+        self.bestTotalScore = 0.0
+        self.bestScoreDate = nil
     }
 
     func updateProgress(currentIndex: Int) {
@@ -40,5 +50,27 @@ final class LessonProgress {
         self.currentSentenceIndex = 0
         self.completedSentences = 0
         self.lastPlayedDate = Date()
+    }
+
+    func updateBestScore(accuracyScore: Double, speedScore: Double) {
+        var updated = false
+
+        // Update best accuracy if current is better
+        if accuracyScore > self.bestAccuracyScore {
+            self.bestAccuracyScore = accuracyScore
+            updated = true
+        }
+
+        // Update best speed if current is better
+        if speedScore > self.bestSpeedScore {
+            self.bestSpeedScore = speedScore
+            updated = true
+        }
+
+        // Update total and date if either improved
+        if updated {
+            self.bestTotalScore = self.bestAccuracyScore + self.bestSpeedScore
+            self.bestScoreDate = Date()
+        }
     }
 }

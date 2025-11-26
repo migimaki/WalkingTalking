@@ -16,6 +16,7 @@ struct PlayerView: View {
     @State private var viewModel: PlayerViewModel
     @State private var showDebugMenu = false
     @State private var showCompletionPopup = false
+    @State private var isLocked = false
 
     init(lesson: Lesson) {
         _viewModel = State(initialValue: PlayerViewModel(lesson: lesson))
@@ -61,48 +62,69 @@ struct PlayerView: View {
                 Divider()
                     .background(Color.gray.opacity(0.3))
 
-                HStack(spacing: 16) {
-                    // View mode toggle button on the left
-                    ViewModeToggleButton(
-                        viewMode: viewModel.viewMode,
-                        onToggle: { viewModel.toggleViewMode() }
-                    )
-
-                    // Player controls in the center
-                    PlayerControlsView(
-                        isPlaying: viewModel.isPlaying,
-                        canGoBack: viewModel.canGoToPrevious,
-                        canGoForward: viewModel.canGoToNext,
-                        onPlayPause: { viewModel.togglePlayPause() },
-                        onRewind: { viewModel.goToPreviousSentence() },
-                        onForward: { viewModel.goToNextSentence() }
-                    )
-
-                    // Lock button on the right
-                    Button(action: {
-                        // TODO: Implement lock functionality
-                        print("Lock button tapped")
-                    }) {
-                        Image(systemName: "lock.fill")
-                            .font(.title2)
-                            .foregroundColor(.secondary)
-                            .frame(width: 60, height: 60)
+                if isLocked {
+                    // Show slide to unlock when locked
+                    SlideToUnlockView {
+                        isLocked = false
                     }
-                    .buttonStyle(.plain)
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 16)
+                } else {
+                    // Show normal controls when unlocked
+                    HStack(spacing: 16) {
+                        // View mode toggle button on the left
+                        ViewModeToggleButton(
+                            viewMode: viewModel.viewMode,
+                            onToggle: { viewModel.toggleViewMode() }
+                        )
+
+                        // Player controls in the center
+                        PlayerControlsView(
+                            isPlaying: viewModel.isPlaying,
+                            canGoBack: viewModel.canGoToPrevious,
+                            canGoForward: viewModel.canGoToNext,
+                            onPlayPause: { viewModel.togglePlayPause() },
+                            onRewind: { viewModel.goToPreviousSentence() },
+                            onForward: { viewModel.goToNextSentence() }
+                        )
+
+                        // Lock button on the right
+                        Button(action: {
+                            isLocked = true
+                        }) {
+                            Image(systemName: "lock.fill")
+                                .font(.title2)
+                                .foregroundColor(.secondary)
+                                .frame(width: 60, height: 60)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 16)
                 }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
             }
         }
         .navigationTitle(viewModel.lesson.title)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                }
+                .disabled(isLocked)
+            }
+
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
                     showDebugMenu = true
                 } label: {
                     Image(systemName: "info.circle")
                 }
+                .disabled(isLocked)
             }
         }
         .overlay {

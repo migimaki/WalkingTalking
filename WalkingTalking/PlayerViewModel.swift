@@ -32,6 +32,10 @@ class PlayerViewModel {
     // Speech-based silence detection
     private var speechTimeoutTimer: Timer?
     private var startedListeningTime: Date?
+    private var audioFinishTime: Date?
+
+    // Scoring
+    private var currentSessionScores: [(accuracy: Double, speed: Double)] = []
 
     // State
     var lesson: Lesson
@@ -46,12 +50,23 @@ class PlayerViewModel {
     var errorMessage: String?
     var isLoadingAudio: Bool = false
 
+    // View mode and translation support
+    var viewMode: ViewMode = .original
+    var translationSentences: [String] = []
+    var isLoadingTranslation: Bool = false
+
     enum PlaybackState {
         case idle
         case speaking
         case waitingForUser
         case listeningToUser
         case processingTransition
+    }
+
+    enum ViewMode {
+        case original      // Show original text + recognized speech
+        case translation   // Show translation in native language + recognized speech
+        case shadowing     // Show nothing (empty view for focus)
     }
 
     // Computed properties
@@ -81,6 +96,33 @@ class PlayerViewModel {
         !isPlaying && currentSentenceIndex >= totalSentences - 1 && totalSentences > 0
     }
 
+    // Best scores from lesson progress
+    var bestAccuracyScore: Double {
+        lesson.progress?.bestAccuracyScore ?? 0
+    }
+
+    var bestSpeedScore: Double {
+        lesson.progress?.bestSpeedScore ?? 0
+    }
+
+    // MARK: - Scoring
+
+    /// Accumulated accuracy points (0-100)
+    var currentAccuracyScore: Double {
+        currentSessionScores.reduce(0.0) { $0 + $1.accuracy }
+    }
+
+    /// Accumulated speed points (0-100)
+    var currentSpeedScore: Double {
+        currentSessionScores.reduce(0.0) { $0 + $1.speed }
+    }
+
+    /// Points per sentence (e.g., 100/27 = 3.7)
+    var pointsPerSentence: Double {
+        guard totalSentences > 0 else { return 0 }
+        return 100.0 / Double(totalSentences)
+    }
+
     // MARK: - Audio Device Info
 
     var currentInputDevice: String {
@@ -99,13 +141,14 @@ class PlayerViewModel {
          audioPlayerService: AudioPlayerService = AudioPlayerService(),
          audioCacheService: AudioCacheService = AudioCacheService.shared,
          recordingService: AudioRecordingService = AudioRecordingService(),
-         speechRecognitionService: SpeechRecognitionService = SpeechRecognitionService(),
+         speechRecognitionService: SpeechRecognitionService? = nil,
          audioSessionManager: AudioSessionManager = AudioSessionManager.shared) {
         self.lesson = lesson
         self.audioPlayerService = audioPlayerService
         self.audioCacheService = audioCacheService
         self.recordingService = recordingService
-        self.speechRecognitionService = speechRecognitionService
+        // Initialize speech recognition with the lesson's language
+        self.speechRecognitionService = speechRecognitionService ?? SpeechRecognitionService(languageCode: lesson.language)
         self.audioSessionManager = audioSessionManager
 
         setupDelegates()
@@ -125,6 +168,8 @@ class PlayerViewModel {
         requestSpeechRecognitionPermission()
         // Always start from the first sentence
         currentSentenceIndex = 0
+        // Load translation sentences if available
+        loadTranslationSentences()
     }
 
     func cleanup() {
@@ -141,6 +186,8 @@ class PlayerViewModel {
         recognizedText = ""
         recognizedTextBySentence.removeAll()
         startedListeningTime = nil
+        audioFinishTime = nil
+        currentSessionScores.removeAll()
     }
 
     func handleBackground() {
@@ -155,6 +202,57 @@ class PlayerViewModel {
     func handleForeground() {
         // App returned to foreground
         print("[PlayerViewModel] Handling foreground transition, isRecording: \(isRecording), isPlaying: \(isPlaying)")
+    }
+
+    // MARK: - View Mode and Translation
+
+    /// Toggle between view modes: original -> translation -> shadowing -> original
+    func toggleViewMode() {
+        switch viewMode {
+        case .original:
+            // Only switch to translation if translations are available
+            viewMode = translationSentences.isEmpty ? .shadowing : .translation
+        case .translation:
+            viewMode = .shadowing
+        case .shadowing:
+            viewMode = .original
+        }
+    }
+
+    /// Load translation sentences in the user's native language
+    private func loadTranslationSentences() {
+        // Only load if lesson has a content_group_id
+        guard let contentGroupId = lesson.contentGroupId else {
+            print("[PlayerViewModel] No content_group_id, translations not available")
+            return
+        }
+
+        // Get user's native language
+        let nativeLanguage = UserSettings.shared.nativeLanguage
+
+        // Don't load translation if native language is same as learning language
+        if nativeLanguage == lesson.language {
+            print("[PlayerViewModel] Native language same as lesson language, no translation needed")
+            return
+        }
+
+        isLoadingTranslation = true
+
+        Task { @MainActor in
+            do {
+                let repository = LessonRepository()
+                let sentences = try await repository.fetchTranslationSentences(
+                    contentGroupId: contentGroupId,
+                    targetLanguage: nativeLanguage
+                )
+                self.translationSentences = sentences
+                print("[PlayerViewModel] Loaded \(sentences.count) translation sentences in \(nativeLanguage)")
+            } catch {
+                print("[PlayerViewModel] Failed to load translations: \(error)")
+                // Translation not critical, don't show error to user
+            }
+            self.isLoadingTranslation = false
+        }
     }
 
     private func requestMicrophonePermission() {
@@ -243,6 +341,9 @@ class PlayerViewModel {
         currentSentenceIndex = 0
         recognizedText = ""
         recognizedTextBySentence.removeAll()
+        currentSessionScores.removeAll()
+        startedListeningTime = nil
+        audioFinishTime = nil
         play()
     }
 
@@ -349,6 +450,9 @@ class PlayerViewModel {
             recognizedTextBySentence[currentSentenceIndex] = recognizedText
         }
 
+        // Calculate score for the current sentence
+        calculateAndSaveScore()
+
         stopListening()
 
         // Mark sentence as completed
@@ -356,7 +460,8 @@ class PlayerViewModel {
 
         // Check if we've reached the end
         if currentSentenceIndex >= totalSentences - 1 {
-            // Lesson complete
+            // Lesson complete - update best score
+            updateBestScore()
             pause()
             currentSentenceIndex = totalSentences - 1
         } else {
@@ -370,6 +475,77 @@ class PlayerViewModel {
                 }
             }
         }
+    }
+
+    // MARK: - Scoring
+
+    private func calculateAndSaveScore() {
+        guard let currentSentence = currentSentence else {
+            print("[PlayerViewModel] No current sentence, skipping score calculation")
+            return
+        }
+
+        guard let audioFinishTime = audioFinishTime else {
+            print("[PlayerViewModel] No audio finish time, skipping score calculation")
+            return
+        }
+
+        // Calculate total time from audio end to now
+        let totalTime = Date().timeIntervalSince(audioFinishTime)
+
+        // Get recognized text or empty string
+        let recognizedText = self.recognizedText.isEmpty ? "" : self.recognizedText
+
+        // Calculate score using ScoringService
+        let score = ScoringService.calculateSentenceScore(
+            originalText: currentSentence.text,
+            recognizedText: recognizedText,
+            totalTime: totalTime,
+            pointsPerSentence: pointsPerSentence
+        )
+
+        // Save score for this sentence
+        currentSessionScores.append(score)
+
+        // Calculate accuracy percentage for logging
+        let accuracyPercentage = (score.accuracy / pointsPerSentence) * 100
+
+        // Check if speed was zeroed due to low accuracy
+        let speedNote = accuracyPercentage < 30 ? " (zeroed - accuracy below 30%)" : ""
+
+        print("""
+        [PlayerViewModel] Score calculated for sentence \(currentSentenceIndex):
+          - Original: "\(currentSentence.text)"
+          - Recognized: "\(recognizedText)"
+          - Time: \(String(format: "%.1f", totalTime))s
+          - Accuracy: \(String(format: "%.2f", score.accuracy))/\(String(format: "%.2f", pointsPerSentence)) (\(String(format: "%.1f", accuracyPercentage))%)
+          - Speed: \(String(format: "%.2f", score.speed))/\(String(format: "%.2f", pointsPerSentence))\(speedNote)
+          - Total Accuracy: \(String(format: "%.1f", currentAccuracyScore))/100
+          - Total Speed: \(String(format: "%.1f", currentSpeedScore))/100
+        """)
+
+        // Reset audio finish time for next sentence
+        self.audioFinishTime = nil
+    }
+
+    private func updateBestScore() {
+        guard let progress = lesson.progress else {
+            print("[PlayerViewModel] No progress object to update best score")
+            return
+        }
+
+        let accuracyScore = currentAccuracyScore
+        let speedScore = currentSpeedScore
+
+        progress.updateBestScore(accuracyScore: accuracyScore, speedScore: speedScore)
+
+        print("""
+        [PlayerViewModel] Lesson completed!
+          - Session Accuracy: \(String(format: "%.1f", accuracyScore))/100
+          - Session Speed: \(String(format: "%.1f", speedScore))/100
+          - Best Accuracy: \(String(format: "%.1f", progress.bestAccuracyScore))/100
+          - Best Speed: \(String(format: "%.1f", progress.bestSpeedScore))/100
+        """)
     }
 }
 
@@ -385,6 +561,9 @@ extension PlayerViewModel: AudioPlayerServiceDelegate {
 
         print("[PlayerViewModel] Audio finished, starting speech timeout monitoring")
         playbackState = .waitingForUser
+
+        // Track when audio finished for scoring
+        audioFinishTime = Date()
 
         // Start monitoring for speech timeout now that audio finished
         startSpeechTimeoutTimer()

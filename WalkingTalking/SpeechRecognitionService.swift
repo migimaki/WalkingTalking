@@ -30,7 +30,28 @@ class SpeechRecognitionService {
     private(set) var recognizedText = ""
     private(set) var lastTranscriptionTime: Date?
 
-    init(locale: Locale = Locale(identifier: "en-US")) {
+    /// Language code to locale mapping
+    private static func locale(for languageCode: String) -> Locale {
+        switch languageCode {
+        case "en":
+            return Locale(identifier: "en-US")
+        case "ja":
+            return Locale(identifier: "ja-JP")
+        case "fr":
+            return Locale(identifier: "fr-FR")
+        default:
+            return Locale(identifier: "en-US")
+        }
+    }
+
+    /// Initialize with language code (en, ja, fr)
+    init(languageCode: String = "en") {
+        let locale = Self.locale(for: languageCode)
+        self.speechRecognizer = SFSpeechRecognizer(locale: locale)
+    }
+
+    /// Initialize with locale (for backwards compatibility)
+    init(locale: Locale) {
         self.speechRecognizer = SFSpeechRecognizer(locale: locale)
     }
 

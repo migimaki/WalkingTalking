@@ -37,7 +37,7 @@ struct LessonListView: View {
                     .shadow(radius: 10)
             }
         }
-        .navigationTitle(channel.name)
+        .navigationTitle(channel.title)
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -80,7 +80,7 @@ struct LessonListView: View {
         ContentUnavailableView {
             Label("No Lessons", systemImage: "book.closed")
         } description: {
-            Text("Pull down to refresh or tap the refresh button to load lessons from \(channel.name)")
+            Text("Pull down to refresh or tap the refresh button to load lessons from \(channel.title)")
         } actions: {
             Button("Refresh") {
                 fetchLessonsFromSupabase()
@@ -122,7 +122,7 @@ struct LessonListView: View {
                 channel: channel
             )
 
-            print("✅ Successfully fetched \(lessonDTOs.count) lessons for channel '\(channel.name)' from Supabase")
+            print("✅ Successfully fetched \(lessonDTOs.count) lessons for channel '\(channel.title)' from Supabase")
 
         } catch {
             errorMessage = "Failed to fetch lessons: \(error.localizedDescription)"
